@@ -1,0 +1,115 @@
+v1 cositas:
+carga un CSV simple, 
+1- transforma fechas básicas, 
+    df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')
+2- normaliza condiciones con split 
+    split por comas
+3- y set para evitar duplicados intra-fila y usa TRUNCATE para recargas
+    cond_df = cond_df.drop_duplicates()
+
+ la primera versión de SQL (esquema básico con 2 tablas: studies con ID numérico arbitrario y
+study_conditions como tabla de relación con PK compuesta), y el sample del CSV proporcionado 
+
+v2 propuesta:
+
+El objetivo es evolucionar hacia un diseño más robusto, escalable y alineado con los requisitos del 
+desafío: escalabilidad, validación de datos, modelado relacional eficiente, soporte para analítica 
+(e.g., conteos por fase, condiciones comunes, duración de estudios), y buenas prácticas de ingeniería de datos.
+
+El CSV permite inferir la estructura real de los datos: 
+es un archivo de ensayos clínicos de fuentes como ClinicalTrials.gov (opción 2 elegida: CSV único de Kaggle), 
+con columnas como Organization Full Name, Overall Status, Start Date, Standard Age, Conditions (separadas por comas o pipes), 
+Primary Purpose, Interventions, Study Type, Phases, etc. 
+
+No incluye explícitamente NCT Number (IA: el NCT number es un estándar universal y obligatorio en todos los datasets
+reales de ensayos clínicos provenientes de ClinicalTrials.gov (incluyendo prácticamente todos los datasets públicos en 
+Kaggle que derivan de allí).en el header visible)
+
+nuestro csv empieza con una coma, sugiriendo un índice implícito o columna vacía), pero en datasets reales de
+ClinicalTrials.gov, NCT Number (e.g., "NCTxxxxxxx") es estándar como identificador único. 
+
+
+
+Data Sucia:
+
+en v1:
+El sample muestra inconsistencias típicas: fechas en formatos variables, 
+condiciones multi-valor (e.g., "Arthroplasty Complications, Arthroplasty, Replacement, Knee"), 
+valores nulos 
+(e.g., en Phases como "NA"), y 
+tipos mixtos (e.g., Enrollment numérico, Start Date como string).
+
+deducciones clave del sample y consideraciones para mejoras en la segunda versión propuesta 
+(que incluye más columnas, PK natural, tabla de condiciones única con ID surrogate, manejo de tipos, 
+y carga secuencial para integridad referencial). Estas se agrupan por categorías para claridad.
+
+1. Deducciones sobre Identificadores y Claves Primarias
+
+Del sample CSV: 
+No hay un ID explícito único (solo un índice implícito de Pandas, como '0' en la primera fila). 
+Sin embargo, en datasets de ensayos clínicos, campos como Brief Title o Full Title son únicos, 
+pero no ideales como PK (demasiado largos/textuales). 
+
+Si NCT Number existe (común en Kaggle/ClinicalTrials.gov), es el identificador natural perfecto: 
+formato "NCT" + 8 dígitos, único globalmente.
+
+De la primera SQL: Usas study_id INTEGER PRIMARY KEY (autogenerado o basado en índice de DF), pero esto es frágil (depende del orden del CSV) y no refleja el dominio (no es idempotente si el CSV cambia).
+
+De la primera Python: Usas studies.index.name = 'study_id' (índice de Pandas como PK), 
+lo que ignora IDs naturales y puede causar duplicados si recargas.
+Consideraciones para segunda versión: Cambiar a nct_number VARCHAR(11) PRIMARY KEY 
+(asumiendo su presencia; si no, generarlo con hash de Full Title + Org Name). Esto asegura unicidad real, evita colisiones en recargas, y soporta analítica por ID estándar. En study_conditions, uso PK compuesta (nct_number, condition_id) con FK para integridad referencial. Añado conditions como tabla separada con id SERIAL PK para normalizar (evitar duplicados de nombres como "Arthroplasty Complications" repetidos en miles de filas).
+
+2. Deducciones sobre Columnas y Cobertura de Datos
+
+Del sample CSV: Columnas clave incluyen Overall Status (e.g., "COMPLETED"), Start Date (e.g., "2021-10-18"), 
+Phases (e.g., "NA", "PHASE2"), Study Type (e.g., "INTERVENTIONAL"), Conditions (multi-valor, separadas por comas), 
+Enrollment (numérico), Completion Date (similar a start), Sponsor (e.g., "SPONSOR"), 
+Gender, Min Age/Max Age (textuales como "ADULT OLDER_ADULT"). Muchas son esenciales para analítica pedida (e.g., ensayos por fase, duración = completion - start, condiciones comunes).
+De la primera SQL: Solo 5 columnas en studies (org_name, status, start_date, phase, study_type), 
+ignorando muchas (e.g., no enrollment para tasas de completitud, no completion_date para análisis temporal).
+De la primera Python: Solo seleccionas un subconjunto mínimo de columnas; no incluyes Title, Enrollment, 
+Completion Date, etc., limitando las queries analíticas.
+Consideraciones para segunda versión: Expandir studies a ~15 columnas relevantes (e.g., añadir title TEXT, enrollment INTEGER, completion_date DATE, sponsor TEXT, gender VARCHAR(50), min_age VARCHAR(50), etc.). Esto cubre analítica como "tasas de finalización" (status + enrollment), "duración media" (completion - start), y "distribución geográfica" (si hay Locations, asumido en full CSV). Priorizo columnas del sample para evitar over-engineering, pero dejo bonus para interventions si el CSV lo soporta (similar a conditions).
+
+3. Deducciones sobre Normalización y Calidad de Datos
+
+Del sample CSV: Conditions es multi-valor (e.g., "Arthroplasty Complications, Arthroplasty, Replacement, Knee" – 
+comas como separador, posibles pipes en otros). Hay inconsistencias: nulos ("NA"), formatos mixtos 
+(fechas como "2004-10" o "2021-01-01"), numéricos como strings (e.g., enrollment). Valores como 
+"Unknown" en phases/status indican datos sucios.
+De la primera SQL: study_conditions usa condition_name TEXT directamente, sin normalización única 
+(posibles duplicados si nombres varían en mayúsculas/minúsculas). No hay constraints (e.g., NOT NULL en phase).
+De la primera Python: Buen split con set para intra-fila, pero no normaliza case (e.g., "migraine" vs "Migraine"),
+ no maneja pipes (común en ClinicalTrials: "|"), y carga todo como string implícito.
+Consideraciones para segunda versión: Introducir tabla conditions con id SERIAL PK y condition_name 
+TEXT UNIQUE para normalizar (cargar únicas primero, mapear IDs). En Python: dtype=str inicial para evitar warnings, rename columns a snake_case, pd.to_datetime/pd.to_numeric con errors='coerce', drop_duplicates en studies por NCT. Añadir validaciones básicas (e.g., phase in lista controlada como ['PHASE1', 'PHASE2', etc.]). Usar split por ',' o '|' (del sample: comas, pero generalizo a '|' común).
+
+4. Deducciones sobre Carga, Idempotencia y Rendimiento
+
+Del sample CSV: ~3050 filas (truncado, pero real puede ser 100k+ en Kaggle), 
+con potencial para valores faltantes (e.g., phases="NA"). Analítica requerida implica 
+agregaciones (GROUP BY phase, COUNT por condition).
+De la primera SQL: Índices en status/phase/condition_name son buenos para queries, 
+pero faltan en PK/FK para joins.
+De la primera Python: TRUNCATE CASCADE es útil para resets, pero no maneja integridad 
+(carga studies antes de conditions, pero sin IDs). No recupera IDs post-carga.
+Consideraciones para segunda versión: Carga secuencial: 1) uniques de conditions → to_sql; 2) 
+query IDs para map; 3) studies → to_sql; 4) relations → to_sql. Usar with engine.begin() para transacciones 
+atómicas. Añadir DROP IF EXISTS + CREATE para resets completos (mejor que solo TRUNCATE, para cambios de esquema). Mantener/expandir índices (e.g., en nct_number, start_date para temporales). Considerar escalabilidad: para 100x datos, usar bulk insert (pandas to_sql con method='multi' o SQLAlchemy bulk).
+
+5. Deducciones sobre Analítica y Escalabilidad (Alineado al Desafío)
+
+Del sample CSV: Datos permiten queries como COUNT por phase/status, GROUP BY condition_name (top condiciones), 
+AVG(completion_date - start_date).
+De las primeras versiones: Esquema soporta basics, pero sin más columnas, analítica es 
+limitada (e.g., no duración sin completion_date).
+Consideraciones para segunda versión: Diseñar para queries del desafío (e.g., vistas materializadas para agregaciones). 
+Incluir constraints (e.g., CHECK para status en lista). 
+
+Para escalabilidad (bonus): particionado por year(start_date), o migrar a columnar DB como DuckDB si CSV crece.
+
+Estas deducciones aseguran que la segunda versión sea más "production-ready": robusta ante datos reales 
+(inconsistentes/multi-valor), soporta analítica profunda, y demuestra decisiones justificadas 
+(e.g., en README: "Usé NCT como PK por unicidad global"). Si el CSV full no tiene NCT, ajusta a hash(title + org_name). 
+

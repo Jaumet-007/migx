@@ -1,0 +1,60 @@
+Repasa: codigo upload.py como lidia con duplicados
+no se si me convence.
+
+----------------------------
+
+1-traducción
+2- analisis y primeros pasos
+Entender el dataset + diseñar el modelo de datos
+📌 ¿Por qué?
+
+Porque en un pipeline de Data Engineering El modelo de datos determina todo lo demás.
+
+Cómo transformas
+Cómo validas
+Qué índices necesitas
+Qué consultas analíticas puedes hacer
+Cómo escalarías
+
+Si empiezas por código → te condiciona.
+Si empiezas por modelo → tú controlas el sistema.
+
+Un pipeline tiene 4 capas:
+
+    Ingestión
+    Transformación
+    Storage (modelo)
+    Analytics
+
+La capa 3 es el núcleo.
+
+📌 Primero entendemos el dominio.
+📌 Luego modelamos.
+📌 Luego implementamos.
+
+elijo el set de datos (2)
+(1) descarto - requiere Kaggle
+(2) CSV unico
+
+-- hago un docker-compose (ver archivo yml) para activar mi postgres 
+PS G:\02-Elling\MIGx> docker-compose -p migx up -d
+time="2026-02-18T14:42:44+01:00" level=warning msg="G:\\02-Elling\\MIGx\\docker-compose.yaml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+[+] Running 4/4
+ ✔ Network migx_migx_net    Created                                                                                                                                        0.4s 
+ ✔ Volume migx_migx_data    Created                                                                                                                                        0.1s 
+ ✔ Container postgres_migx  Started                                                                                                                                        3.1s 
+ ✔ Container pgadmin_migx   Started     
+
+ -- http://localhost:5052
+ nou server 
+ postgres_migx
+ postgres
+ 5432
+ migx_user
+ migx_password
+
+4-faig sql creacio
+5-faig python de upload (falla pq falta: pip install pandas sqlalchemy psycopg2-binary)
+    tb falla per la r: df = pd.read_csv(r'G:\02-Elling\MIGx\dataset_csv\clin_trials.csv')
+6-error per duplicates... redefineixo cargar_datos
+7-funciona

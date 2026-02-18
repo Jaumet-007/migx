@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres_migx:
+    image: postgres:15
+    container_name: postgres_migx
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: migx_user
+      POSTGRES_PASSWORD: migx_password
+      POSTGRES_DB: clinical_db
+    volumes:
+      - migx_data:/var/lib/postgresql/data
+    networks:
+      - migx_net
+
+  pgadmin_migx:
+    image: dpage/pgadmin4
+    container_name: pgadmin_migx
+    ports:
+      - "5052:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@migx.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - postgres_migx
+    networks:
+      - migx_net
+
+networks:
+  migx_net:
+
+volumes:
+  migx_data:

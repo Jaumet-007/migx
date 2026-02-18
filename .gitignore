@@ -1,0 +1,5 @@
+# --- Regla específica solicitada ---
+# Ignora cualquier carpeta o archivo que empiece por 'dataset'
+dataset*
+tradu*
+/dataset*
