@@ -2,6 +2,6 @@
 # Ignora cualquier carpeta o archivo que empiece por 'dataset'
 dataset*
 tradu*
-*.txt
+bitacora.txt
 /dataset*
 /Other*
