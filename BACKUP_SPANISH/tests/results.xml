@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+   <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="4" time="39.964" timestamp="2026-02-19T14:01:12.076941" hostname="DESKTOP-U28HO9B">
+      <testcase classname="tests.test_upload" name="test_generate_study_key_deterministic" time="0.271" />
+      <testcase classname="tests.test_upload" name="test_extract_conditions_splitting_and_cleaning" time="0.004" />
+      <testcase classname="tests.test_upload" name="test_normalize_statuses_mapping_and_unexpected" time="0.006" />
+      <testcase classname="tests.test_upload" name="test_date_conversion_coerce_to_nat" time="0.003" />
+   </testsuite>
+</testsuites>

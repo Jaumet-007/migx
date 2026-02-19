@@ -1,127 +1,127 @@
 -- =============================================================================
 -- queries.sql
--- Analytics queries for clinical trials pipeline
--- Answers key questions from the challenge
+-- Queries analíticas para el pipeline de ensayos clínicos
+-- Responde preguntas clave del desafío
 -- =============================================================================
 
 -- =============================================================================
--- 1. HOW MANY TRIALS ARE THERE BY STUDY TYPE AND PHASE?
+-- 1. ¿CUÁNTOS ENSAYOS HAY POR TIPO DE ESTUDIO Y FASE?
 -- =============================================================================
 
 SELECT 
     study_type,
-    COALESCE(phase, 'NOT_SPECIFIED') AS phase,
-    COUNT(*) AS number_of_studies,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS percentage,
-    COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) AS completed,
+    COALESCE(phase, 'NO_ESPECIFICADO') AS phase,
+    COUNT(*) AS numero_estudios,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS porcentaje,
+    COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) AS completados,
     ROUND(100.0 * COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) / 
-          COUNT(*), 2) AS completion_rate
+          COUNT(*), 2) AS tasa_completacion
 FROM studies
 GROUP BY study_type, phase
-ORDER BY number_of_studies DESC;
+ORDER BY numero_estudios DESC;
 
 -- =============================================================================
--- 2. WHAT ARE THE MOST COMMONLY STUDIED CONDITIONS?
+-- 2. ¿CUÁLES SON LAS CONDICIONES MÁS COMÚNMENTE ESTUDIADAS?
 -- =============================================================================
 
 SELECT 
     c.condition_name,
-    COUNT(DISTINCT sc.study_key) AS number_of_studies,
+    COUNT(DISTINCT sc.study_key) AS numero_estudios,
     ROUND(100.0 * COUNT(DISTINCT sc.study_key) / 
-          (SELECT COUNT(DISTINCT study_key) FROM studies), 2) AS coverage_percentage,
+          (SELECT COUNT(DISTINCT study_key) FROM studies), 2) AS porcentaje_cobertura,
     COUNT(CASE WHEN s.overall_status = 'COMPLETED' 
-              THEN 1 END) AS completed_studies
+              THEN 1 END) AS estudios_completados
 FROM conditions c
 LEFT JOIN study_conditions sc ON c.id = sc.condition_id
 LEFT JOIN studies s ON sc.study_key = s.study_key
 GROUP BY c.condition_name
 HAVING COUNT(DISTINCT sc.study_key) > 0
-ORDER BY number_of_studies DESC
-LIMIT 20;  -- Top 20 conditions
+ORDER BY numero_estudios DESC
+LIMIT 20;  -- Top 20 condiciones
 
 -- =============================================================================
--- 3. DISTRIBUTION OF STUDIES BY STATUS
+-- 3. DISTRIBUCIÓN DE ESTUDIOS POR STATUS
 -- =============================================================================
 
 SELECT 
     overall_status,
-    COUNT(*) AS number_of_studies,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS percentage,
-    COUNT(CASE WHEN start_date IS NOT NULL THEN 1 END) AS with_start_date,
+    COUNT(*) AS numero_estudios,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS porcentaje,
+    COUNT(CASE WHEN start_date IS NOT NULL THEN 1 END) AS con_fecha_inicio,
     ROUND(AVG(CASE WHEN start_date IS NOT NULL THEN 
               CAST((CURRENT_DATE - start_date) AS numeric) ELSE NULL END), 1) 
-        AS average_days_since_start
+        AS dias_promedio_desde_inicio
 FROM studies
 GROUP BY overall_status
-ORDER BY number_of_studies DESC;
+ORDER BY numero_estudios DESC;
 
 -- =============================================================================
--- 4. TEMPORAL ANALYSIS: DISTRIBUTION BY START YEAR
+-- 4. ANÁLISIS TEMPORAL: DISTRIBUCIÓN POR AÑO DE INICIO
 -- =============================================================================
 
 SELECT 
-    EXTRACT(YEAR FROM start_date)::INTEGER AS year,
-    COUNT(*) AS number_of_studies,
-    COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) AS completed,
-    COUNT(CASE WHEN overall_status = 'RECRUITING' THEN 1 END) AS recruiting,
-    COUNT(CASE WHEN overall_status = 'SUSPENDED' THEN 1 END) AS suspended,
+    EXTRACT(YEAR FROM start_date)::INTEGER AS anio,
+    COUNT(*) AS numero_estudios,
+    COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) AS completados,
+    COUNT(CASE WHEN overall_status = 'RECRUITING' THEN 1 END) AS en_reclutamiento,
+    COUNT(CASE WHEN overall_status = 'SUSPENDED' THEN 1 END) AS suspendidos,
     ROUND(100.0 * COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) / 
-          COUNT(*), 2) AS completion_rate
+          COUNT(*), 2) AS tasa_completacion
 FROM studies
 WHERE start_date IS NOT NULL
 GROUP BY EXTRACT(YEAR FROM start_date)
-ORDER BY year DESC;
+ORDER BY anio DESC;
 
 -- =============================================================================
--- 5. STUDIES BY ORGANIZATION (TOP 10)
+-- 5. ESTUDIOS POR ORGANIZACIÓN (TOP 10)
 -- =============================================================================
 
 SELECT 
     org_name,
-    COUNT(*) AS number_of_studies,
-    COUNT(DISTINCT sc.condition_id) AS num_unique_conditions,
-    COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) AS completed,
+    COUNT(*) AS numero_estudios,
+    COUNT(DISTINCT sc.condition_id) AS num_condiciones_unicas,
+    COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) AS completados,
     ROUND(100.0 * COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END) / 
-          COUNT(*), 2) AS completion_rate
+          COUNT(*), 2) AS tasa_completacion
 FROM studies s
 LEFT JOIN study_conditions sc ON s.study_key = sc.study_key
 GROUP BY org_name
-HAVING COUNT(*) >= 2  -- At least 2 studies
-ORDER BY number_of_studies DESC
+HAVING COUNT(*) >= 2  -- Al menos 2 estudios
+ORDER BY numero_estudios DESC
 LIMIT 10;
 
 -- =============================================================================
--- 6. NUMBER OF CONDITIONS PER STUDY (DISTRIBUTION ANALYSIS)
+-- 6. NÚMERO DE CONDICIONES POR ESTUDIO (ANÁLISIS DE DISTRIBUCIÓN)
 -- =============================================================================
 
 SELECT 
-    num_conditions,
-    COUNT(*) AS number_of_studies,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS percentage
+    num_condiciones,
+    COUNT(*) AS numero_estudios,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS porcentaje
 FROM (
     SELECT 
         s.study_key,
-        COUNT(sc.condition_id) AS num_conditions
+        COUNT(sc.condition_id) AS num_condiciones
     FROM studies s
     LEFT JOIN study_conditions sc ON s.study_key = sc.study_key
     GROUP BY s.study_key
 ) subq
-GROUP BY num_conditions
-ORDER BY num_conditions;
+GROUP BY num_condiciones
+ORDER BY num_condiciones;
 
 -- =============================================================================
--- 7. STUDIES WITH BEST/WORST OUTCOMES
+-- 7. STUDIES CON MEJORES/PEORES RESULTADOS
 -- =============================================================================
 
--- Oldest studies (started the longest ago)
+-- Estudios más antiguos (iniciados hace más tiempo)
 SELECT 
     s.study_key AS study_key,
     s.brief_title,
     s.org_name,
     s.start_date,
-    CAST((CURRENT_DATE - s.start_date) AS numeric) AS duration_days,
+    CAST((CURRENT_DATE - s.start_date) AS numeric) AS dias_duracion,
     s.overall_status,
-    COUNT(DISTINCT sc.condition_id) AS number_of_conditions
+    COUNT(DISTINCT sc.condition_id) AS numero_condiciones
 FROM studies s
 LEFT JOIN study_conditions sc ON s.study_key = sc.study_key
 WHERE s.start_date IS NOT NULL
@@ -130,57 +130,57 @@ ORDER BY s.start_date ASC
 LIMIT 10;
 
 -- =============================================================================
--- 8. DATA QUALITY: CRITICAL FIELDS
+-- 8. CALIDAD DE DATOS: CAMPOS CRÍTICOS
 -- =============================================================================
 
 SELECT 
-    COUNT(*) AS total_studies,
-    COUNT(CASE WHEN brief_title IS NULL OR brief_title = '' THEN 1 END) AS empty_titles,
-    COUNT(CASE WHEN org_name IS NULL OR org_name = '' THEN 1 END) AS empty_orgs,
-    COUNT(CASE WHEN overall_status IS NULL THEN 1 END) AS empty_statuses,
-    COUNT(CASE WHEN start_date IS NULL THEN 1 END) AS empty_dates,
-    COUNT(CASE WHEN phase IS NULL THEN 1 END) AS empty_phases,
+    COUNT(*) AS total_estudios,
+    COUNT(CASE WHEN brief_title IS NULL OR brief_title = '' THEN 1 END) AS titulos_vacios,
+    COUNT(CASE WHEN org_name IS NULL OR org_name = '' THEN 1 END) AS orgs_vacias,
+    COUNT(CASE WHEN overall_status IS NULL THEN 1 END) AS status_vacios,
+    COUNT(CASE WHEN start_date IS NULL THEN 1 END) AS fechas_vacias,
+    COUNT(CASE WHEN phase IS NULL THEN 1 END) AS fases_vacias,
     ROUND(100.0 * COUNT(CASE WHEN brief_title IS NOT NULL AND 
                             org_name IS NOT NULL AND 
                             overall_status IS NOT NULL AND 
                             start_date IS NOT NULL 
-                       THEN 1 END) / COUNT(*), 2) AS average_completeness
+                       THEN 1 END) / COUNT(*), 2) AS completitud_promedio
 FROM studies;
 
 -- =============================================================================
--- 9. EXECUTIVE SUMMARY
+-- 9. RESUMEN EJECUTIVO
 -- =============================================================================
 
 SELECT 
-    'Total Studies' AS metric,
-    COUNT(*) AS value
+    'Total de Estudios' AS metrica,
+    COUNT(*) AS valor
 FROM studies
 
 UNION ALL
 
 SELECT 
-    'Completed Studies',
+    'Estudios Completados',
     COUNT(CASE WHEN overall_status = 'COMPLETED' THEN 1 END)
 FROM studies
 
 UNION ALL
 
 SELECT 
-    'Studies Recruiting',
+    'Estudios en Reclutamiento',
     COUNT(CASE WHEN overall_status = 'RECRUITING' THEN 1 END)
 FROM studies
 
 UNION ALL
 
 SELECT 
-    'Unique Conditions',
+    'Condiciones Únicas',
     COUNT(DISTINCT id)
 FROM conditions
 
 UNION ALL
 
 SELECT 
-    'Studies with No Assigned Conditions',
+    'Estudios sin Condiciones Asignadas',
     COUNT(DISTINCT s.study_key)
 FROM studies s
 LEFT JOIN study_conditions sc ON s.study_key = sc.study_key
@@ -189,14 +189,14 @@ WHERE sc.condition_id IS NULL
 UNION ALL
 
 SELECT 
-    'Participating Organizations',
+    'Organizaciones Participantes',
     COUNT(DISTINCT org_name)
 FROM studies
 
 UNION ALL
 
 SELECT 
-    'Studies with Future Dates (Anomaly)',
+    'Estudios con Fechas Futuras (Anomalía)',
     COUNT(CASE WHEN start_date > CURRENT_DATE THEN 1 END)
 FROM studies;
 

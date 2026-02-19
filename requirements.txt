@@ -1,17 +1,17 @@
-# Pipeline de Datos de Ensayos Clínicos
-# Dependencias Python
+# Clinical Trials Data Pipeline
+# Python Dependencies
 
-# Base de datos y ORM
+# Database and ORM
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.23
 
-# Procesamiento de datos
+# Data processing
 pandas==2.1.3
 numpy==1.24.3
 
-# Logging y monitoreo
+# Logging and monitoring
 python-dotenv==1.0.0
 
-# Desarrollo y testing (opcional)
+# Development and testing (optional)
 pytest==7.4.3
 pytest-cov==4.1.0

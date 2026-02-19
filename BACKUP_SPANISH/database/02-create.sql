@@ -1,29 +1,29 @@
 -- =============================================================================
 -- create.sql
--- Database schema for clinical trials (curt_trials.csv dataset)
--- Version 2 - Improvements over v1
+-- Esquema de base de datos para ensayos clínicos (dataset curt_trials.csv)
+-- Versión 2 - Mejoras respecto a v1
 -- =============================================================================
 
--- Main design reasons:
--- 1. Use stable surrogate key (study_key VARCHAR(16)) generated with MD5 hash
---    because CSV does NOT include NCT Number or other unique natural identifier.
--- 2. Normalize 'conditions' into a separate table with surrogate key (id) to
---    avoid duplicates and facilitate aggregations / top most frequent conditions.
--- 3. Add more relevant columns from CSV to support requested analytics
---    (count by phase, study duration, common conditions, etc.)
--- 4. More precise data types + basic constraints for quality
--- 5. Indexes on frequently used columns in WHERE/GROUP BY for performance
+-- Razones principales de diseño:
+-- 1. Usamos surrogate key estable (study_key VARCHAR(16)) generado con hash MD5
+--    porque el CSV NO incluye NCT Number ni otro identificador natural único.
+-- 2. Normalizamos 'conditions' en tabla separada con surrogate key (id) para
+--    evitar duplicados y facilitar agregaciones / top condiciones más frecuentes.
+-- 3. Añadimos más columnas relevantes del CSV para soportar las analíticas pedidas
+--    (conteo por fase, duración de estudios, condiciones comunes, etc.)
+-- 4. Tipos de datos más precisos + constraints básicas para calidad
+-- 5. Índices en columnas frecuentes en WHERE/GROUP BY para rendimiento
 -- =============================================================================
 
--- Clean if exists (useful for development / testing)
+-- Limpiar si existe (útil para desarrollo / pruebas)
 DROP TABLE IF EXISTS public.study_conditions CASCADE;
 DROP TABLE IF EXISTS public.conditions CASCADE;
 DROP TABLE IF EXISTS public.studies CASCADE;
 DROP TABLE IF EXISTS study_conditions, conditions, studies CASCADE;
 
--- Main table: clinical studies
+-- Tabla principal: estudios clínicos
 CREATE TABLE public.studies (
-    study_key       VARCHAR(16) PRIMARY KEY,            -- MD5 hash of unique fields
+    study_key       VARCHAR(16) PRIMARY KEY,            -- hash MD5 de campos únicos
     brief_title     TEXT NOT NULL,
     full_title      TEXT,
     org_name        TEXT NOT NULL,
@@ -31,13 +31,13 @@ CREATE TABLE public.studies (
     responsible_party VARCHAR(100),
     overall_status  VARCHAR(50) NOT NULL,
     study_type      VARCHAR(50) NOT NULL,
-    phase           VARCHAR(50),                        -- can be NA, PHASE1, etc.
+    phase           VARCHAR(50),                        -- puede ser NA, PHASE1, etc.
     start_date      DATE,
-    -- completion_date DATE,                             -- not visible in sample, but common
+    -- completion_date DATE,                             -- no visible en sample, pero común
     standard_age    TEXT,                               -- e.g. "ADULT OLDER_ADULT"
     primary_purpose VARCHAR(50),
-    enrollment      INTEGER,                            -- if appears in complete CSV
-    -- sponsor         TEXT,                             -- sometimes deduced from org_name
+    enrollment      INTEGER,                            -- si aparece en CSV completo
+    -- sponsor         TEXT,                             -- a veces se deduce de org_name
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     --CONSTRAINT valid_status CHECK (overall_status IN (
     --    'COMPLETED', 'RECRUITING', 'NOT_YET_RECRUITING', 'ACTIVE_NOT_RECRUITING',
@@ -55,34 +55,34 @@ CREATE TABLE public.studies (
         'UNKNOWN',
         'APPROVED_FOR_MARKETING',
         'WITHHELD',
-        'AVAILABLE',                      -- ← key here
+        'AVAILABLE',                      -- ← clave aquí
         'NO_LONGER_AVAILABLE',
         'TEMPORARILY_NOT_AVAILABLE'
 ))
 );
 
--- Table of unique conditions (normalization)
+-- Tabla de condiciones únicas (normalización)
 CREATE TABLE public.conditions (
     id              SERIAL PRIMARY KEY,
-    condition_name  TEXT NOT NULL UNIQUE,               -- prevents duplicates
+    condition_name  TEXT NOT NULL UNIQUE,               -- evita duplicados
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Many-to-many relationship table
+-- Tabla de relación muchos-a-muchos
 CREATE TABLE public.study_conditions (
     study_key       VARCHAR(16) REFERENCES studies(study_key) ON DELETE CASCADE,
     condition_id    INTEGER REFERENCES conditions(id) ON DELETE CASCADE,
     PRIMARY KEY (study_key, condition_id)
 );
 
--- Indexes to improve performance in frequent analytic queries
+-- Índices para mejorar rendimiento en consultas analíticas frecuentes
 CREATE INDEX idx_studies_status        ON studies(overall_status);
 CREATE INDEX idx_studies_phase         ON studies(phase);
 CREATE INDEX idx_studies_study_type    ON studies(study_type);
 CREATE INDEX idx_studies_start_date    ON studies(start_date);
 CREATE INDEX idx_conditions_name       ON conditions(condition_name);
 
--- Example view useful for quick analytics (optional but recommended)
+-- Vista de ejemplo útil para analítica rápida (opcional pero recomendado)
 CREATE VIEW public.v_studies_with_conditions AS
 SELECT 
     s.study_key,
@@ -97,8 +97,8 @@ LEFT JOIN public.study_conditions sc ON sc.study_key = s.study_key
 LEFT JOIN public.conditions c ON c.id = sc.condition_id
 GROUP BY s.study_key, s.brief_title, s.overall_status, s.phase, s.study_type, s.start_date;
 
--- Comment: you can create more views or materialized views once you have
--- concrete analytics defined (top 10 conditions, trials by phase, etc.)
+-- Comentario: puedes crear más vistas o materialized views cuando tengas
+-- las analíticas concretas definidas (top 10 condiciones, ensayos por fase, etc.)
 
 
 

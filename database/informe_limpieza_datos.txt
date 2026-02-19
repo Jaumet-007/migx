@@ -1,61 +1,61 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                INFORME DE CALIDAD DE DATOS - ENSAYOS CLÍNICOS                ║
-║ Generado: 2026-02-19 14:06:32                                                ║
+║                DATA QUALITY REPORT - CLINICAL TRIALS                          ║
+║ Generated: 2026-02-19 14:06:32                                                ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
-┌─ VALIDACIÓN 1: Nombres de Condiciones Únicos
-└─ Propósito: Evitar duplicados de condiciones comunes
-   ✓ ESTADO: OK - No hay condiciones duplicadas
-   Métrica: 0 duplicados
+┌─ VALIDATION 1: Unique Condition Names
+└─ Purpose: Prevent duplicates of common conditions
+   ✓ STATUS: OK - No duplicate conditions
+   Metric: 0 duplicates
 
-┌─ VALIDACIÓN 2: Integridad de Referencias (condiciones y estudios)
-└─ Propósito: Asegurar que todas las relaciones sean válidas
-   ✓ ESTADO: OK - Todas las referencias son válidas
-   Métrica: 0 referencias rotas
+┌─ VALIDATION 2: Referential Integrity (conditions and studies)
+└─ Purpose: Ensure all relationships are valid
+   ✓ STATUS: OK - All references are valid
+   Metric: 0 broken references
 
-┌─ VALIDACIÓN 3: Campos Obligatorios Completos
-└─ Propósito: Asegurar que no falten datos esenciales
-   ✗ ESTADO: CAMPOS VACÍOS DETECTADOS
-   Métrica: 219166 campos vacíos de 1982536 total
-     • Títulos vacíos: 0/495634
-     • Organizaciones vacías: 0/495634
-     • Estados vacíos: 0/495634
-     • Fechas de inicio vacías: 219166/495634
-   Acción: Investiga el CSV fuente para imputación o filtrado de registros
+┌─ VALIDATION 3: Required Fields Complete
+└─ Purpose: Ensure no essential data is missing
+   ✗ STATUS: EMPTY FIELDS DETECTED
+   Metric: 219166 empty fields out of 1982536 total
+     • Empty titles: 0/495634
+     • Empty organizations: 0/495634
+     • Empty statuses: 0/495634
+     • Empty start dates: 219166/495634
+   Action: Investigate source CSV for imputation or record filtering
 
-┌─ VALIDACIÓN 4: Fechas de Inicio Lógicas
-└─ Propósito: Detectar fechas imposibles o inconsistentes
-   ✗ ESTADO: FECHAS PROBLEMÁTICAS
-   Métrica: 219198/495634 estudios con fechas sospechosas
-     • Fechas ausentes (NULL): 219166
-     • Fechas en el futuro (imposibles): 32
-   Acción: Revisa registros con fechas problemáticas en el CSV fuente
+┌─ VALIDATION 4: Logical Start Dates
+└─ Purpose: Detect impossible or inconsistent dates
+   ✗ STATUS: PROBLEMATIC DATES
+   Metric: 219198/495634 studies with suspicious dates
+     • Missing dates (NULL): 219166
+     • Future dates (impossible): 32
+   Action: Review records with problematic dates in source CSV
 
-┌─ VALIDACIÓN 5: Número de Condiciones por Estudio
-└─ Propósito: Detectar estudios sin condiciones o con demasiadas
-   ✗ ESTADO: OUTLIERS DETECTADOS
-   Métrica: 2671/495610 estudios con distribución anómala
-     • Estudios con >10 condiciones: 2671
-   Acción: Investiga si hay errores en el split de valores múltiples (CSV)
+┌─ VALIDATION 5: Number of Conditions per Study
+└─ Purpose: Detect studies without conditions or with too many
+   ✗ STATUS: OUTLIERS DETECTED
+   Metric: 2671/495610 studies with anomalous distribution
+     • Studies with >10 conditions: 2671
+   Action: Investigate if there are errors in multi-value splitting (CSV)
 
-┌─ VALIDACIÓN 6: Duplicados por Título + Organización
-└─ Propósito: Identificar estudios repetidos o parcialmente duplicados
-   ✗ ESTADO: DUPLICADOS PARCIALES DETECTADOS
-   Métrica: 763 grupos de estudios duplicados
+┌─ VALIDATION 6: Duplicates by Title + Organization
+└─ Purpose: Identify repeated or partially duplicate studies
+   ✗ STATUS: PARTIAL DUPLICATES DETECTED
+   Metric: 763 groups of duplicate studies
      • 'Sun Protection Factor Assay...' / 'Bayer...'
-       → 12 registros (9 fechas)
+       → 12 records (9 dates)
      • 'Vaccine Therapy in Treating Patients With Metastat...' / 'National Cancer Institute (NCI...'
-       → 7 registros (0 fechas)
+       → 7 records (0 dates)
      • 'A Study of Glaucoma Therapy to Treat Open-Angle Gl...' / 'Alcon Research...'
-       → 5 registros (0 fechas)
+       → 5 records (0 dates)
      • 'Effect of Liraglutide on Blood Glucose Control in ...' / 'Novo Nordisk A/S...'
-       → 5 registros (0 fechas)
+       → 5 records (0 dates)
      • 'A Study to Evaluate the Safety and Effectiveness o...' / 'Meda Pharmaceuticals...'
-       → 5 registros (0 fechas)
-   Acción: Mantén registros más recientes/antiguos según criterio del equipo
+       → 5 records (0 dates)
+   Action: Keep more recent/older records according to team criteria
 
 
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                ✗ ESTADO GENERAL: REVISAR PROBLEMAS DETECTADOS               ║
-║                  Investiga el CSV fuente para correcciones                   ║
+║                ✗ OVERALL STATUS: REVIEW DETECTED ISSUES                      ║
+║                  Investigate source CSV for corrections                       ║
 ╚══════════════════════════════════════════════════════════════════════════════╝

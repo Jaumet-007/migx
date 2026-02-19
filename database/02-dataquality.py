@@ -1,193 +1,193 @@
-# informe_limpieza.py
-# Genera un informe de validación de calidad de datos en las 3 tablas
-# Amigable para usuarios no informáticos
-# Ejecutar después de la carga para detectar problemas
+# data_quality_report.py
+# Generates a data quality validation report for the 3 tables
+# User-friendly for non-technical users
+# Run after loading to detect issues
 
 import pandas as pd
 from sqlalchemy import create_engine
 from datetime import datetime
 
-# Configuración (ajusta según tu entorno)
+# Configuration (adjust according to your environment)
 DB_URL = "postgresql://migx_user:migx_password@localhost:5434/clinical_db"
 OUTPUT_FILE = "informe_limpieza_datos.txt"
 
 engine = create_engine(DB_URL)
 
-def generar_informe():
-    """Genera informe de calidad de datos amigable para usuarios no técnicos"""
+def generate_report():
+    """Generates user-friendly data quality report"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    lineas = [
+    lines = [
         "╔" + "═"*78 + "╗",
-        "║" + " INFORME DE CALIDAD DE DATOS - ENSAYOS CLÍNICOS ".center(78) + "║",
-        "║" + f" Generado: {timestamp}".ljust(78) + "║",
+        "║" + " DATA QUALITY REPORT - CLINICAL TRIALS ".center(78) + "║",
+        "║" + f" Generated: {timestamp}".ljust(78) + "║",
         "╚" + "═"*78 + "╝",
         ""
     ]
 
-    estado_general = True  # Bandera para estado global
+    general_status = True  # Flag for overall status
 
-    # 1. UNICIDAD EN CONDICIONES
-    lineas.append("┌─ VALIDACIÓN 1: Nombres de Condiciones Únicos")
-    lineas.append("└─ Propósito: Evitar duplicados de condiciones comunes")
+    # 1. UNIQUENESS IN CONDITIONS
+    lines.append("┌─ VALIDATION 1: Unique Condition Names")
+    lines.append("└─ Purpose: Avoid duplicates of common conditions")
     try:
         df = pd.read_sql("""
-            SELECT condition_name, COUNT(*) AS conteo
+            SELECT condition_name, COUNT(*) AS count
             FROM conditions
             GROUP BY condition_name
             HAVING COUNT(*) > 1
-            ORDER BY conteo DESC;
+            ORDER BY count DESC;
         """, engine)
         
         if len(df) == 0:
-            lineas.append("   ✓ ESTADO: OK - No hay condiciones duplicadas")
-            lineas.append("   Métrica: 0 duplicados")
+            lines.append("   ✓ STATUS: OK - No duplicate conditions")
+            lines.append("   Metric: 0 duplicates")
         else:
-            estado_general = False
-            lineas.append("   ✗ ESTADO: PROBLEMAS DETECTADOS")
-            lineas.append(f"   Métrica: {len(df)} condiciones duplicadas")
-            lineas.append("   Acción: Investiga el CSV fuente para corregir variaciones (ej. 'diabetes' vs 'Diabetes')")
+            general_status = False
+            lines.append("   ✗ STATUS: PROBLEMS DETECTED")
+            lines.append(f"   Metric: {len(df)} duplicate conditions")
+            lines.append("   Action: Investigate CSV source to fix variations (e.g. 'diabetes' vs 'Diabetes')")
             for _, row in df.iterrows():
-                lineas.append(f"     • '{row['condition_name']}': {row['conteo']} registros")
+                lines.append(f"     • '{row['condition_name']}': {row['count']} records")
     except Exception as e:
-        lineas.append(f"   ✗ ERROR: {str(e)}")
-        estado_general = False
+        lines.append(f"   ✗ ERROR: {str(e)}")
+        general_status = False
     
-    lineas.append("")
+    lines.append("")
 
-    # 2. INTEGRIDAD REFERENCIAL
-    lineas.append("┌─ VALIDACIÓN 2: Integridad de Referencias (condiciones y estudios)")
-    lineas.append("└─ Propósito: Asegurar que todas las relaciones sean válidas")
+    # 2. REFERENTIAL INTEGRITY
+    lines.append("┌─ VALIDATION 2: Reference Integrity (conditions and studies)")
+    lines.append("└─ Purpose: Ensure all relationships are valid")
     
     try:
-        # Conditions huérfanos
+        # Orphan conditions
         df_cond = pd.read_sql("""
-            SELECT COUNT(DISTINCT sc.condition_id) as huerfanos
+            SELECT COUNT(DISTINCT sc.condition_id) as orphans
             FROM study_conditions sc
             LEFT JOIN conditions c ON sc.condition_id = c.id
             WHERE c.id IS NULL;
         """, engine)
-        huerfanos_cond = df_cond['huerfanos'].iloc[0]
+        orphans_cond = df_cond['orphans'].iloc[0]
         
-        # Studies huérfanos
+        # Orphan studies
         df_stud = pd.read_sql("""
-            SELECT COUNT(DISTINCT sc.study_key) as huerfanos
+            SELECT COUNT(DISTINCT sc.study_key) as orphans
             FROM study_conditions sc
             LEFT JOIN studies s ON sc.study_key = s.study_key
             WHERE s.study_key IS NULL;
         """, engine)
-        huerfanos_stud = df_stud['huerfanos'].iloc[0]
+        orphans_stud = df_stud['orphans'].iloc[0]
         
-        total_problemas = huerfanos_cond + huerfanos_stud
+        total_issues = orphans_cond + orphans_stud
         
-        if total_problemas == 0:
-            lineas.append("   ✓ ESTADO: OK - Todas las referencias son válidas")
-            lineas.append("   Métrica: 0 referencias rotas")
+        if total_issues == 0:
+            lines.append("   ✓ STATUS: OK - All references are valid")
+            lines.append("   Metric: 0 broken references")
         else:
-            estado_general = False
-            lineas.append("   ✗ ESTADO: PROBLEMAS DETECTADOS")
-            lineas.append(f"   Métrica: {total_problemas} referencias inválidas")
-            if huerfanos_cond > 0:
-                lineas.append(f"     • {huerfanos_cond} ID(s) de condición que no existen en tabla conditions")
-            if huerfanos_stud > 0:
-                lineas.append(f"     • {huerfanos_stud} clave(s) de estudio que no existen en tabla studies")
-            lineas.append("   Acción: Revisa el CSV fuente para inconsistencias en carga secuencial")
+            general_status = False
+            lines.append("   ✗ STATUS: PROBLEMS DETECTED")
+            lines.append(f"   Metric: {total_issues} invalid references")
+            if orphans_cond > 0:
+                lines.append(f"     • {orphans_cond} condition ID(s) that don't exist in conditions table")
+            if orphans_stud > 0:
+                lines.append(f"     • {orphans_stud} study key(s) that don't exist in studies table")
+            lines.append("   Action: Review CSV source for sequential load inconsistencies")
     except Exception as e:
-        lineas.append(f"   ✗ ERROR: {str(e)}")
-        estado_general = False
+        lines.append(f"   ✗ ERROR: {str(e)}")
+        general_status = False
     
-    lineas.append("")
+    lines.append("")
 
-    # 3. COMPLETITUD EN CAMPOS CLAVE
-    lineas.append("┌─ VALIDACIÓN 3: Campos Obligatorios Completos")
-    lineas.append("└─ Propósito: Asegurar que no falten datos esenciales")
+    # 3. COMPLETENESS IN KEY FIELDS
+    lines.append("┌─ VALIDATION 3: Required Fields Complete")
+    lines.append("└─ Purpose: Ensure essential data is not missing")
     
     try:
         df = pd.read_sql("""
             SELECT 
                 COUNT(*) AS total,
-                COUNT(CASE WHEN brief_title IS NULL OR brief_title = '' THEN 1 END) AS titulos_vacios,
-                COUNT(CASE WHEN org_name IS NULL OR org_name = '' THEN 1 END) AS orgs_vacios,
-                COUNT(CASE WHEN overall_status IS NULL THEN 1 END) AS statuses_vacios,
-                COUNT(CASE WHEN start_date IS NULL THEN 1 END) AS fechas_vacias
+                COUNT(CASE WHEN brief_title IS NULL OR brief_title = '' THEN 1 END) AS empty_titles,
+                COUNT(CASE WHEN org_name IS NULL OR org_name = '' THEN 1 END) AS empty_orgs,
+                COUNT(CASE WHEN overall_status IS NULL THEN 1 END) AS empty_statuses,
+                COUNT(CASE WHEN start_date IS NULL THEN 1 END) AS empty_dates
             FROM studies;
         """, engine)
         
         total = df['total'].iloc[0]
-        titulos = df['titulos_vacios'].iloc[0]
-        orgs = df['orgs_vacios'].iloc[0]
-        statuses = df['statuses_vacios'].iloc[0]
-        fechas = df['fechas_vacias'].iloc[0]
+        titles = df['empty_titles'].iloc[0]
+        orgs = df['empty_orgs'].iloc[0]
+        statuses = df['empty_statuses'].iloc[0]
+        dates = df['empty_dates'].iloc[0]
         
-        total_vacios = titulos + orgs + statuses + fechas
+        total_empty = titles + orgs + statuses + dates
         
-        if total_vacios == 0:
-            lineas.append("   ✓ ESTADO: OK - Todos los campos obligatorios están completos")
-            lineas.append(f"   Métrica: {total} estudios, 0 campos vacíos")
+        if total_empty == 0:
+            lines.append("   ✓ STATUS: OK - All required fields are complete")
+            lines.append(f"   Metric: {total} studies, 0 empty fields")
         else:
-            estado_general = False
-            lineas.append("   ✗ ESTADO: CAMPOS VACÍOS DETECTADOS")
-            lineas.append(f"   Métrica: {total_vacios} campos vacíos de {total * 4} total")
-            lineas.append(f"     • Títulos vacíos: {titulos}/{total}")
-            lineas.append(f"     • Organizaciones vacías: {orgs}/{total}")
-            lineas.append(f"     • Estados vacíos: {statuses}/{total}")
-            lineas.append(f"     • Fechas de inicio vacías: {fechas}/{total}")
-            lineas.append("   Acción: Investiga el CSV fuente para imputación o filtrado de registros")
+            general_status = False
+            lines.append("   ✗ STATUS: EMPTY FIELDS DETECTED")
+            lines.append(f"   Metric: {total_empty} empty fields out of {total * 4} total")
+            lines.append(f"     • Empty titles: {titles}/{total}")
+            lines.append(f"     • Empty organizations: {orgs}/{total}")
+            lines.append(f"     • Empty statuses: {statuses}/{total}")
+            lines.append(f"     • Empty start dates: {dates}/{total}")
+            lines.append("   Action: Investigate CSV source for imputation or record filtering")
     except Exception as e:
-        lineas.append(f"   ✗ ERROR: {str(e)}")
-        estado_general = False
+        lines.append(f"   ✗ ERROR: {str(e)}")
+        general_status = False
     
-    lineas.append("")
+    lines.append("")
 
-    # 4. CONSISTENCIA EN FECHAS
-    lineas.append("┌─ VALIDACIÓN 4: Fechas de Inicio Lógicas")
-    lineas.append("└─ Propósito: Detectar fechas imposibles o inconsistentes")
+    # 4. DATE CONSISTENCY
+    lines.append("┌─ VALIDATION 4: Logical Start Dates")
+    lines.append("└─ Purpose: Detect impossible or inconsistent dates")
     
     try:
         df = pd.read_sql("""
             SELECT 
                 COUNT(*) as total,
-                COUNT(CASE WHEN start_date IS NULL THEN 1 END) as nulos,
-                COUNT(CASE WHEN start_date > CURRENT_DATE THEN 1 END) as futuras,
-                COUNT(CASE WHEN start_date >= '2026-01-01' THEN 1 END) as año_2026_posterior
+                COUNT(CASE WHEN start_date IS NULL THEN 1 END) as nulls,
+                COUNT(CASE WHEN start_date > CURRENT_DATE THEN 1 END) as future,
+                COUNT(CASE WHEN start_date >= '2026-01-01' THEN 1 END) as year_2026_plus
             FROM studies;
         """, engine)
         
         total = df['total'].iloc[0]
-        nulos = df['nulos'].iloc[0]
-        futuras = df['futuras'].iloc[0]
-        año_posterior = df['año_2026_posterior'].iloc[0]
+        nulls = df['nulls'].iloc[0]
+        future = df['future'].iloc[0]
+        year_plus = df['year_2026_plus'].iloc[0]
         
-        problemas_fecha = nulos + futuras
+        date_issues = nulls + future
         
-        if problemas_fecha == 0:
-            lineas.append("   ✓ ESTADO: OK - Todas las fechas son válidas")
-            lineas.append(f"   Métrica: {total} estudios, 0 fechas problemáticas")
+        if date_issues == 0:
+            lines.append("   ✓ STATUS: OK - All dates are valid")
+            lines.append(f"   Metric: {total} studies, 0 problematic dates")
         else:
-            estado_general = False
-            lineas.append("   ✗ ESTADO: FECHAS PROBLEMÁTICAS")
-            lineas.append(f"   Métrica: {problemas_fecha}/{total} estudios con fechas sospechosas")
-            if nulos > 0:
-                lineas.append(f"     • Fechas ausentes (NULL): {nulos}")
-            if futuras > 0:
-                lineas.append(f"     • Fechas en el futuro (imposibles): {futuras}")
-            lineas.append("   Acción: Revisa registros con fechas problemáticas en el CSV fuente")
+            general_status = False
+            lines.append("   ✗ STATUS: PROBLEMATIC DATES")
+            lines.append(f"   Metric: {date_issues}/{total} studies with suspicious dates")
+            if nulls > 0:
+                lines.append(f"     • Missing dates (NULL): {nulls}")
+            if future > 0:
+                lines.append(f"     • Dates in the future (impossible): {future}")
+            lines.append("   Action: Review records with problematic dates in CSV source")
     except Exception as e:
-        lineas.append(f"   ✗ ERROR: {str(e)}")
-        estado_general = False
+        lines.append(f"   ✗ ERROR: {str(e)}")
+        general_status = False
     
-    lineas.append("")
+    lines.append("")
 
-    # 5. OUTLIERS EN NÚMERO DE CONDICIONES
-    lineas.append("┌─ VALIDACIÓN 5: Número de Condiciones por Estudio")
-    lineas.append("└─ Propósito: Detectar estudios sin condiciones o con demasiadas")
+    # 5. OUTLIERS IN NUMBER OF CONDITIONS
+    lines.append("┌─ VALIDATION 5: Number of Conditions per Study")
+    lines.append("└─ Purpose: Detect studies with no conditions or too many")
     
     try:
         df = pd.read_sql("""
             SELECT 
-                COUNT(CASE WHEN num_cond = 0 THEN 1 END) as sin_condiciones,
-                COUNT(CASE WHEN num_cond > 10 THEN 1 END) as muchas_condiciones,
-                COUNT(*) as total_estudios
+                COUNT(CASE WHEN num_cond = 0 THEN 1 END) as no_conditions,
+                COUNT(CASE WHEN num_cond > 10 THEN 1 END) as many_conditions,
+                COUNT(*) as total_studies
             FROM (
                 SELECT COUNT(condition_id) as num_cond
                 FROM study_conditions
@@ -195,62 +195,62 @@ def generar_informe():
             ) subq;
         """, engine)
         
-        sin_cond = df['sin_condiciones'].iloc[0]
-        muchas = df['muchas_condiciones'].iloc[0]
-        total_est = df['total_estudios'].iloc[0]
+        no_cond = df['no_conditions'].iloc[0]
+        many = df['many_conditions'].iloc[0]
+        total_est = df['total_studies'].iloc[0]
         
-        problemas = sin_cond + muchas
+        issues = no_cond + many
         
-        if problemas == 0:
-            lineas.append("   ✓ ESTADO: OK - Distribución normal de condiciones por estudio")
-            lineas.append(f"   Métrica: {total_est} estudios, todos con 1-10 condiciones")
+        if issues == 0:
+            lines.append("   ✓ STATUS: OK - Normal distribution of conditions per study")
+            lines.append(f"   Metric: {total_est} studies, all with 1-10 conditions")
         else:
-            estado_general = False
-            lineas.append("   ✗ ESTADO: OUTLIERS DETECTADOS")
-            lineas.append(f"   Métrica: {problemas}/{total_est} estudios con distribución anómala")
-            if sin_cond > 0:
-                lineas.append(f"     • Estudios sin condiciones: {sin_cond}")
-            if muchas > 0:
-                lineas.append(f"     • Estudios con >10 condiciones: {muchas}")
-            lineas.append("   Acción: Investiga si hay errores en el split de valores múltiples (CSV)")
+            general_status = False
+            lines.append("   ✗ STATUS: OUTLIERS DETECTED")
+            lines.append(f"   Metric: {issues}/{total_est} studies with anomalous distribution")
+            if no_cond > 0:
+                lines.append(f"     • Studies with no conditions: {no_cond}")
+            if many > 0:
+                lines.append(f"     • Studies with >10 conditions: {many}")
+            lines.append("   Action: Investigate for errors in multi-value split (CSV)")
     except Exception as e:
-        lineas.append(f"   ✗ ERROR: {str(e)}")
-        estado_general = False
+        lines.append(f"   ✗ ERROR: {str(e)}")
+        general_status = False
     
-    lineas.append("")
+    lines.append("")
 
-    # 6. DUPLICADOS
-    lineas.append("┌─ VALIDACIÓN 6: Duplicados por Título + Organización")
-    lineas.append("└─ Propósito: Identificar estudios repetidos o parcialmente duplicados")
+    # 6. DUPLICATES
+    lines.append("┌─ VALIDATION 6: Duplicates by Title + Organization")
+    lines.append("└─ Purpose: Identify repeated or partially duplicate studies")
     
     try:
         df = pd.read_sql("""
-            SELECT COUNT(*) as num_grupos_duplicados
+            SELECT COUNT(*) as num_duplicate_groups
             FROM (
-                SELECT brief_title, org_name, COUNT(*) as conteo
+                SELECT brief_title, org_name, COUNT(*) as count
                 FROM studies
                 GROUP BY brief_title, org_name
                 HAVING COUNT(*) > 1
             ) subq;
         """, engine)
         
-        num_grupos = df['num_grupos_duplicados'].iloc[0]
+        num_groups = df['num_duplicate_groups'].iloc[0]
         
-        if num_grupos == 0:
-            lineas.append("   ✓ ESTADO: OK - No hay duplicados detectados")
-            lineas.append("   Métrica: 0 grupos duplicados")
+        if num_groups == 0:
+            lines.append("   ✓ STATUS: OK - No duplicates detected")
+            lines.append("   Metric: 0 duplicate groups")
         else:
-            estado_general = False
-            lineas.append("   ✗ ESTADO: DUPLICADOS PARCIALES DETECTADOS")
-            lineas.append(f"   Métrica: {num_grupos} grupos de estudios duplicados")
+            general_status = False
+            lines.append("   ✗ STATUS: PARTIAL DUPLICATES DETECTED")
+            lines.append(f"   Metric: {num_groups} groups of duplicate studies")
             
-            # Mostrar los principales
-            df_detalles = pd.read_sql("""
+            # Show the main ones
+            df_details = pd.read_sql("""
                 SELECT 
                     brief_title,
                     org_name,
-                    COUNT(*) AS num_registros,
-                    COUNT(DISTINCT start_date) as fechas_distintas
+                    COUNT(*) AS num_records,
+                    COUNT(DISTINCT start_date) as distinct_dates
                 FROM studies
                 GROUP BY brief_title, org_name
                 HAVING COUNT(*) > 1
@@ -258,35 +258,35 @@ def generar_informe():
                 LIMIT 5;
             """, engine)
             
-            for _, row in df_detalles.iterrows():
-                lineas.append(f"     • '{row['brief_title'][:50]}...' / '{row['org_name'][:30]}...'")
-                lineas.append(f"       → {row['num_registros']} registros ({row['fechas_distintas']} fechas)")
+            for _, row in df_details.iterrows():
+                lines.append(f"     • '{row['brief_title'][:50]}...' / '{row['org_name'][:30]}...'")
+                lines.append(f"       → {row['num_records']} records ({row['distinct_dates']} dates)")
             
-            lineas.append("   Acción: Mantén registros más recientes/antiguos según criterio del equipo")
+            lines.append("   Action: Keep most recent/oldest records per team criteria")
     except Exception as e:
-        lineas.append(f"   ✗ ERROR: {str(e)}")
-        estado_general = False
+        lines.append(f"   ✗ ERROR: {str(e)}")
+        general_status = False
     
-    lineas.append("")
-    lineas.append("")
+    lines.append("")
+    lines.append("")
 
-    # RESUMEN FINAL
-    lineas.append("╔" + "═"*78 + "╗")
-    if estado_general:
-        lineas.append("║" + " ✓ ESTADO GENERAL: DATOS CON BUENA CALIDAD ".center(78) + "║")
-        lineas.append("║" + " Los datos están listos para analítica ".center(78) + "║")
+    # FINAL SUMMARY
+    lines.append("╔" + "═"*78 + "╗")
+    if general_status:
+        lines.append("║" + " ✓ OVERALL STATUS: GOOD DATA QUALITY ".center(78) + "║")
+        lines.append("║" + " Data is ready for analytics ".center(78) + "║")
     else:
-        lineas.append("║" + " ✗ ESTADO GENERAL: REVISAR PROBLEMAS DETECTADOS ".center(78) + "║")
-        lineas.append("║" + " Investiga el CSV fuente para correcciones ".center(78) + "║")
-    lineas.append("╚" + "═"*78 + "╝")
+        lines.append("║" + " ✗ OVERALL STATUS: REVIEW DETECTED PROBLEMS ".center(78) + "║")
+        lines.append("║" + " Investigate CSV source for corrections ".center(78) + "║")
+    lines.append("╚" + "═"*78 + "╝")
 
-    # Guardar informe
-    contenido = "\n".join(lineas)
+    # Save report
+    content = "\n".join(lines)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        f.write(contenido)
+        f.write(content)
 
-    print(contenido)
-    print(f"\n✓ Informe guardado en: {OUTPUT_FILE}")
+    print(content)
+    print(f"\n✓ Report saved to: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    generar_informe()
+    generate_report()

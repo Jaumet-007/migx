@@ -16,7 +16,7 @@ CREATE TABLE public.study_conditions (
     PRIMARY KEY (study_id, condition_name)
 );
 
--- 3. Indexes to optimize analytics (Performance Bonus)
+-- 3. Índices para optimizar las analíticas (Bonus de rendimiento)
 CREATE INDEX idx_studies_status ON public.studies(status);
 CREATE INDEX idx_studies_phase ON public.studies(phase);
 CREATE INDEX idx_conditions_name ON public.study_conditions(condition_name);

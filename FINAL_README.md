@@ -1,91 +1,91 @@
-# Pipeline de Datos de Ensayos Clínicos
+# Clinical Trials Data Pipeline
 
-## Abordar el Proyecto
+## Project Approach
 
-El primer paso era leer el reto y estructurar los primeros pasos. La elección del set de datos no era tarea fácil. Opté por el más simple para poder dedicar más tiempo al desarrollo: la opción (2) de un simple CSV, que demostró tener bastante suciedad que limpiar.
+The first step was to read the challenge and structure the initial steps. Choosing the right dataset was not an easy task. I opted for the simplest option to dedicate more time to development: option (2), a simple CSV, which proved to have a lot of dirty data to clean.
 
-Mi segunda parte, si esto concluía, era abordar la ingesta desde diferentes orígenes de datos. De esta parte poco he podido completar, como explico al final del documento.
-
----
-
-## Decisiones de Diseño
-
-Dado un solo CSV masivo de ensayos clínicos, el primer paso era ser capaz de ingestarlo y determinar sus problemas de datos.
-
-Decisiones de implementación del pipeline:
-
-- **Origen:** CSV
-- **Lenguaje:** Python (con Pandas, que era divina para esto)
-- **Base de datos:** PostgreSQL, cargada en local desde Docker
-- **Control de versiones:** GitHub
+My second part, if this had concluded, was to address data ingestion from different sources. I've been able to complete little of this part, as I explain at the end of the document.
 
 ---
 
-## Configurando el Entorno *(apartado con ayuda de IA)*
+## Design Decisions
 
-Clonar el repo: `https://github.com/Jaumet-007/migx.git`
+Given a single massive CSV of clinical trials, the first step was to be able to ingest it and determine its data problems.
 
-1. **Instala dependencias:** Crea un virtualenv y ejecuta `pip install -r requirements.txt` (incluye pandas, sqlalchemy, etc.).
-2. **Levanta PostgreSQL con Docker:** `docker-compose up -d` (usando `docker-compose.yml` con usuario `migx_user`, pw `migx_password`, puerto `5434`, db `clinical_db`).
+Pipeline implementation decisions:
 
-Después, desarrollar desde Visual Studio el código.
-
----
-
-## Primera Aproximación: Revisando el CSV Origen
-
-El primer análisis del fichero llevó a un diseño inicial sencillo:
-
-1. Esquema de base de datos con 2 tablas: `studies` y `conditions`.
-2. Carga con Python aplicando unas primeras depuraciones:
-   - Transformar fechas al tipo fecha: `df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')`
-   - Normalizar valores multi-valor (separados por coma o pipe), que se cargarían en la tabla `conditions`
-   - Eliminar duplicados intra-fila con `cond_df.drop_duplicates()` y usar `TRUNCATE` para recargas
-
-El resultado de esta fase es `01-create.sql` y `01-upload.py`, que como veremos no serán la versión definitiva.
-
-Para ejecutar esta primera versión:
-
-1. **Crea esquema:** `psql -U migx_user -d clinical_db -f database/01-create.sql` (o desde pgAdmin en `http://localhost:5052/browser/`)
-2. **Carga datos:** `python database/01-upload.py`
+- **Source:** CSV
+- **Language:** Python (with Pandas, which was divine for this)
+- **Database:** PostgreSQL, running locally via Docker
+- **Version Control:** GitHub
 
 ---
 
-## Análisis de la Primera Aproximación
+## Setting Up the Environment *(section with AI assistance)*
 
-La primera aproximación, aunque funcional como prototipo mínimo, sufría de varios problemas que la hacían poco robusta para uso real:
+Clone the repo: `https://github.com/Jaumet-007/migx.git`
 
-**Ausencia de identificador único natural.** La IA concluye que debería existir el campo estándar NCT Number (obligatorio en ClinicalTrials.gov y en casi todos los datasets de Kaggle derivados). En cambio, la tabla usaba un `study_id` numérico basado en el índice de Pandas, que es frágil y no idempotente (cambia si se reordena el CSV o se recarga).
+1. **Install dependencies:** Create a virtualenv and run `pip install -r requirements.txt` (includes pandas, sqlalchemy, etc.).
+2. **Start PostgreSQL with Docker:** `docker-compose up -d` (using `docker-compose.yml` with user `migx_user`, pw `migx_password`, port `5434`, db `clinical_db`).
 
-**Alta redundancia en condiciones.** Se almacenaban repetidas en `study_conditions` sin tabla separada. El mismo string ("diabetes", "Arthroplasty Complications") se repetía miles de veces, y sin tabla `conditions` con valores únicos era imposible corregir errores tipográficos o estandarizar en un solo lugar.
-
-**Pérdida de columnas clave.** Solo se cargaban unas pocas columnas, limitando la analítica posterior.
-
-**Datos aún sucios.** El análisis del CSV reveló varios problemas que la versión 1 no resolvía:
-
-- Fechas en formatos variables (ej. "2004-10", "2021-01-01") sin conversión robusta, con riesgo de NULLs o errores.
-- Valores nulos, "NA" o "Unknown" en fases y estados sin validación, causando inconsistencias en agregaciones.
-- Tipos mixtos no manejados, generando warnings y coerciones erróneas.
-- Sin garantía de orden de inserción, con riesgo de cargar relaciones con IDs inexistentes.
-- Sin chequeos de duplicados parciales, valores inválidos o huérfanos en relaciones.
-- Sin logging ni informe de calidad, lo que dificultaba depurar problemas.
+Then develop the code from Visual Studio.
 
 ---
 
-## Segunda Aproximación: Modelo Entidad-Relación
+## First Approach: Reviewing the Source CSV
 
-El nuevo esquema pasa a 3 tablas: `studies`, `conditions` y `study_conditions`.
+The initial analysis of the file led to a simple design:
 
-**Ventajas:** Mayor escalabilidad con millones de registros, y sin repetición de estudios ni condiciones. La tabla `study_conditions` actúa como tabla N:M que los relaciona.
+1. Database schema with 2 tables: `studies` and `conditions`.
+2. Loading with Python applying initial cleanups:
+   - Convert dates to date type: `df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')`
+   - Normalize multi-value fields (separated by comma or pipe), to be loaded in the `conditions` table
+   - Remove duplicates within rows with `cond_df.drop_duplicates()` and use `TRUNCATE` for reloads
 
-**Problema detectado:** Hay repetición en estudios. Por ejemplo, "Sun Protection Factor Assay" aparece hasta 6 veces con fechas de inicio distintas y el resto de campos iguales.
+The result of this phase is `01-create.sql` and `01-upload.py`, which as we will see is not the final version.
 
-La decisión fue no crear una tabla adicional para versiones de un mismo estudio por estas razones:
+To run this first version:
 
-- No disponemos de un campo `version` en el origen que permita trazabilidad clara.
-- Añadiría complejidad innecesaria y penalizaría el rendimiento con JOINs redundantes.
+1. **Create schema:** `psql -U migx_user -d clinical_db -f database/01-create.sql` (or from pgAdmin at `http://localhost:5052/browser/`)
+2. **Load data:** `python database/01-upload.py`
 
-En su lugar, se optó por limpiar y organizar la información antes de guardarla mediante una huella digital (hash MD5) que combina `brief_title`, `full_title`, `organization_full_name` y `start_date`, ignorando repeticiones y quedándose con la primera ocurrencia.
+---
+
+## Analysis of the First Approach
+
+The first approach, while functional as a minimal prototype, suffered from several problems that made it fragile for real-world use:
+
+**Absence of a natural unique identifier.** AI concludes that there should be the standard NCT Number field (mandatory on ClinicalTrials.gov and in almost all Kaggle-derived datasets). Instead, the table used a numeric `study_id` based on the Pandas index, which is fragile and not idempotent (changes if the CSV is reordered or reloaded).
+
+**High redundancy in conditions.** They were stored as repetitions in `study_conditions` without a separate table. The same string ("diabetes", "Arthroplasty Complications") was repeated thousands of times, and without a `conditions` table with unique values it was impossible to fix typos or standardize in one place.
+
+**Loss of key columns.** Only a few columns were loaded, limiting later analytics.
+
+**Data still dirty.** CSV analysis revealed several problems that version 1 did not solve:
+
+- Dates in variable formats (e.g. "2004-10", "2021-01-01") without robust conversion, with risk of NULLs or errors.
+- Null values, "NA" or "Unknown" in phases and statuses without validation, causing inconsistencies in aggregations.
+- Unhandled mixed types, generating warnings and erroneous coercions.
+- No guarantee of insertion order, with risk of loading relationships with non-existent IDs.
+- No checks for partial duplicates, invalid values or orphaned relationships.
+- No logging or quality report, making it difficult to debug issues.
+
+---
+
+## Second Approach: Entity-Relationship Model
+
+The new schema changes to 3 tables: `studies`, `conditions` and `study_conditions`.
+
+**Advantages:** Greater scalability with millions of records, and without repetition of studies or conditions. The `study_conditions` table acts as an N:M table that relates them.
+
+**Problem detected:** There is repetition in studies. For example, "Sun Protection Factor Assay" appears up to 6 times with different start dates and the rest of the fields equal.
+
+The decision was not to create an additional table for versions of the same study for these reasons:
+
+- We do not have a `version` field in the source that allows clear traceability.
+- It would add unnecessary complexity and penalize performance with redundant JOINs.
+
+Instead, we chose to clean and organize the information before storing it using a digital fingerprint (MD5 hash) that combines `brief_title`, `full_title`, `organization_full_name` and `start_date`, ignoring repetitions and keeping the first occurrence.
 
 ```mermaid
 erDiagram
@@ -104,124 +104,121 @@ erDiagram
 
 ---
 
-## Segunda Aproximación: Ingestión con Python
+## Second Approach: Data Ingestion with Python
 
-A partir de los problemas identificados, se construyó un pipeline definitivo. Le pedí a la IA que aplicara las reglas clásicas de repetición, duplicados y errores humanos o de tipología, pero que validara también por el CSV otras validaciones que se podían escapar.
+Based on the identified problems, a final pipeline was built. I asked AI to apply the classic rules of repetition, duplicates and human or typological errors, but to also validate other validations from the CSV that could be missed.
 
-**Validaciones incorporadas al pipeline:**
+**Validations incorporated into the pipeline:**
 
-- Normalización automática de nombres de columnas (snake_case + mapeo explícito), evitando errores por diferencias de formato entre CSV y esquema SQL.
-- Generación de `study_key` con hash MD5 determinístico, que elimina duplicados reales y parciales de forma idempotente (mismo CSV = mismos keys siempre).
-- Detección y advertencia de valores inesperados en estados, permitiendo identificar anomalías sin abortar la carga.
-- Opción para filtrado estricto de filas inválidas, dando flexibilidad entre tolerancia y rigurosidad.
-- Extracción limpia de condiciones (split por coma/pipe, minúsculas, longitud mínima >= 3 caracteres), reduciendo ruido y strings vacíos.
-- Carga secuencial garantizada (primero condiciones únicas, luego map de IDs, luego estudios y relaciones), eliminando riesgo de integridad referencial rota.
-- Conversión segura de tipos con `pd.to_datetime(errors='coerce')`, manejando formatos variables sin crash.
+- Automatic normalization of column names (snake_case + explicit mapping), avoiding errors due to format differences between CSV and SQL schema.
+- Generation of `study_key` with deterministic MD5 hash, which eliminates real and partial duplicates idempotently (same CSV = same keys always).
+- Detection and warning of unexpected values in statuses, allowing identification of anomalies without aborting the load.
+- Option for strict filtering of invalid rows, giving flexibility between tolerance and rigor.
+- Clean extraction of conditions (split by comma/pipe, lowercase, minimum length >= 3 characters), reducing noise and empty strings.
+- Guaranteed sequential loading (first unique conditions, then map IDs, then studies and relationships), eliminating risk of broken referential integrity.
+- Safe type conversion with `pd.to_datetime(errors='coerce')`, handling variable formats without crash.
 
-**Validación adicional sugerida por la IA, surgida de varias cargas fallidas en cuanto al CHECK de estados:** Mapeo suave de estados raros en `overall_status` (ej. `'AVAILABLE'` se traduce a `'APPROVED_FOR_MARKETING'`), previniendo violaciones de CHECK constraint sin perder filas. La IA sugiere que en lugar de ampliar infinitamente el CHECK, dado que ClinicalTrials.gov tiene aproximadamente 15 estados oficiales, es más fácil de escalar si en el futuro se decide que AVAILABLE es otro estado: basta con cambiar líneas de script en lugar de alterar la estructura de la tabla.
+**Additional validation suggested by AI, arising from several failed loads regarding the CHECK of statuses:** Soft mapping of rare statuses in `overall_status` (e.g. `'AVAILABLE'` translates to `'APPROVED_FOR_MARKETING'`), preventing CHECK constraint violations without losing rows. AI suggests that instead of infinitely expanding the CHECK, given that ClinicalTrials.gov has approximately 15 official statuses, it is easier to scale if in the future it is decided that AVAILABLE is another status: just change script lines instead of altering the table structure.
 
-**Mejoras de escalabilidad y mantenimiento** (pedidas explícitamente a la IA para que el código fuera más fácil de mantener y extender):
+**Scalability and maintenance improvements** (explicitly requested to AI so that the code would be easier to maintain and extend):
 
-- Diseño modular con funciones separadas (`generate_study_key`, `normalize_column_names`, `extract_conditions`, `normalize_statuses`), fáciles de testear, reutilizar y extender.
-- Logging estructurado con timestamps y niveles (INFO / WARNING / ERROR).
-- Transacción atómica con `engine.begin()` y `TRUNCATE CASCADE`, asegurando consistencia total en recargas.
-- Deduplicación temprana con `drop_duplicates(subset='study_key')`, reduciendo volumen antes de insertar.
-- Código preparado para volúmenes mayores: `low_memory=False`, `dtype=str` inicial.
-- Posibilidad de migrar a Spark/Parquet sin cambiar la lógica central.
-
----
-
-## Tests Unitarios
-
-Los tests unitarios garantizan tres cosas fundamentales:
-
-**Fiabilidad.** Aseguran que las reglas de limpieza (como separar condiciones o normalizar fechas) funcionen siempre igual, evitando que datos sucios arruinen las métricas de negocio.
-
-**Idempotencia.** Validan que el sistema procese la misma información varias veces sin duplicar registros ni corromper la base de datos.
-
-**Mantenimiento.** Permiten evolucionar el código con confianza. Si mañana se cambia una función para mejorar el rendimiento, los tests confirman en segundos que no se ha roto la lógica del pipeline.
-
-El código y los resultados están en la carpeta `/tests`.
+- Modular design with separate functions (`generate_study_key`, `normalize_column_names`, `extract_conditions`, `normalize_statuses`), easy to test, reuse and extend.
+- Structured logging with timestamps and levels (INFO / WARNING / ERROR).
+- Atomic transaction with `engine.begin()` and `TRUNCATE CASCADE`, ensuring total consistency in reloads.
+- Early deduplication with `drop_duplicates(subset='study_key')`, reducing volume before inserting.
+- Code prepared for larger volumes: `low_memory=False`, initial `dtype=str`.
+- Possibility to migrate to Spark/Parquet without changing the core logic.
 
 ---
 
-## Calidad de los Datos
+## Unit Tests
 
-Recién cargado el dataset, se implementó un script Python que ejecuta las queries de validación y genera un informe legible:
+Unit tests guarantee three fundamental things:
+
+**Reliability.** They ensure that cleaning rules (such as separating conditions or normalizing dates) always work the same way, preventing dirty data from ruining business metrics.
+
+**Idempotency.** They validate that the system can process the same information multiple times without duplicating records or corrupting the database.
+
+**Maintenance.** They allow the code to be evolved with confidence. If tomorrow we change a function to improve performance, the tests confirm in seconds that we haven't broken the pipeline logic.
+
+The code and results are in the `/tests` folder.
+
+---
+
+## Data Quality
+
+Immediately after loading the dataset, a Python script was implemented that executes the validation queries and generates a readable report:
 
 ```
 python database/02-dataquality.py
 ```
 
-Esto produce `informe_limpieza_datos.txt` con 6 chequeos:
+This produces `informe_limpieza_datos.txt` with 6 checks:
 
-1. **Unicidad en nombres de condiciones.** Detecta si hay condiciones duplicadas (debería devolver 0 filas, ya que `condition_name` es UNIQUE). Evita que conteos se inflen artificialmente.
+1. **Uniqueness in condition names.** Detects if there are duplicate conditions (should return 0 rows, since `condition_name` is UNIQUE). Prevents counts from inflating artificially.
 
-2. **Integridad referencial en relaciones.** Verifica que no haya referencias inválidas en `study_conditions`. Garantiza que los JOINs en analítica funcionen correctamente.
+2. **Referential integrity in relationships.** Verifies that there are no invalid references in `study_conditions`. Guarantees that JOINs in analytics work correctly.
 
-3. **Completitud en campos clave.** Cuenta valores NULL o vacíos en columnas críticas (título, organización, estado, fecha). Sin título no se puede identificar un estudio; sin fecha no se puede calcular su duración.
+3. **Completeness in key fields.** Counts NULL or empty values in critical columns (title, organization, status, date). Without a title you cannot identify a study; without a date you cannot calculate its duration.
 
-4. **Consistencia lógica en fechas.** Detecta fechas de finalización anteriores a las de inicio, fechas futuras irreales o estudios completados sin fecha de fin.
+4. **Logical consistency in dates.** Detects completion dates earlier than start dates, unrealistic future dates or studies completed without an end date.
 
-5. **Outliers en número de condiciones por estudio.** Identifica estudios con 0 condiciones o con un número excesivo (más de 10 podría ser un error de parseo en el CSV).
+5. **Outliers in number of conditions per study.** Identifies studies with 0 conditions or with an excessive number (more than 10 could be a parsing error in the CSV).
 
-6. **Duplicados parciales.** Agrupa estudios por título y organización y muestra grupos con más de 1 registro, para detectar casos como el de Bayer SPF con 6 entradas.
+6. **Partial duplicates.** Groups studies by title and organization and displays groups with more than 1 record, to detect cases like the Bayer SPF with 6 entries.
 
-### Conclusión de Calidad
+### Data Quality Conclusion
 
-**Hallazgos críticos:**
+**Critical findings:**
 
-- El 44% de los registros (219.166) no tienen `start_date`, lo que impide análisis temporal.
-- 32 estudios tienen fechas erróneas (ej. año 2026).
-- 2.671 registros tienen más de 10 condiciones, posible fallo de parseo.
-- 763 grupos con mismo título y empresa pero datos inconsistentes (ej. Bayer con 12 registros y 9 fechas distintas; también NCI, Alcon y Novo Nordisk).
+- 44% of records (219,166) do not have `start_date`, which prevents temporal analysis.
+- 32 studies have erroneous dates (e.g. year 2026).
+- 2,671 records have more than 10 conditions, possible parsing error.
+- 763 groups with same title and company but inconsistent data (e.g. Bayer with 12 records and 9 different dates; also NCI, Alcon and Novo Nordisk).
 
-**Diagnóstico:** Integridad referencial correcta, pero datos fuente sucios.
+**Diagnosis:** Referential integrity correct, but source data dirty.
 
-**Acciones requeridas:**
+**Required actions:**
 
-- Validar si los nulos y duplicados vienen del CSV fuente.
-- Revisar la lógica de separación en la columna "Conditions".
-- Establecer una regla de negocio para deduplicación (ej. mantener el registro más antiguo o el más completo).
-- Revisar una muestra de filas problemáticas para validación conjunta.
+- Validate if NULLs and duplicates come from the source CSV.
+- Review the separation logic in the "Conditions" column.
+- Establish a business rule for deduplication (e.g. keep oldest or most complete record).
+- Review a sample of problem rows for joint validation.
 
 ---
 
-## Analytics Requeridos en el Challenge
+## Analytics Required in the Challenge
 
-El challenge pide una serie de preguntas que se responden mediante queries SQL. Dado que los LLM actuales son bastante buenos generando SQL, las queries se generaron con ayuda de IA. Dicho esto, con 30 años trabajando con SQL, estoy en condiciones de generarlas yo mismo sin problema y de explicarlas en detalle si se requiere.
+The challenge asks for a series of questions to be answered through SQL queries. Given that current LLMs are quite good at generating SQL, the queries were generated with AI assistance. That said, with 30 years working with SQL, I am in a position to generate them myself without problem and to explain them in detail if required.
 
-
-
-El resultado de todas las queries (analytics/queries.sql) se ha resumido en el informe:
-`analytics/analytics_report.md`        
+The result of all queries (analytics/queries.sql) has been summarized in the report:
+`analytics/analytics_report.md`
 
 ```
 psql -U migx_user -d clinical_db -f analytics/queries.sql
 ```
 
-## 
 ---
 
-## Diagrama de Arquitectura (obviando la version 1)
+## Architecture Diagram (omitting version 1)
 
 ```mermaid
 graph TD
     A[CSV clin_trials.csv] --> B[ETL Python: 02-upload.py]
     B --> C[Transform: Normalize, Dedup MD5, Map statuses]
-    C --> D[Load: PostgreSQL - 3 tablas]
+    C --> D[Load: PostgreSQL - 3 tables]
     D --> E[Validate: 02-dataquality.py]
-    E --> F[Informe: informe_limpieza_datos.txt]
+    E --> F[Report: informe_limpieza_datos.txt]
     F --> G[Analytics: queries.sql]
 ```
 
 ---
 
-## Tareas Pendientes: Otros Origenes de Datos
+## Pending Tasks: Other Data Sources
 
-**XML.** Se usaría `xml.etree.ElementTree` o `lxml` para parsear el XML y extraer campos equivalentes. El cambio sería mínimo: reemplazar `pd.read_csv()` por una función `parse_xml_to_df(xml_path)` que devuelva un DataFrame con la misma estructura.
+**XML.** Would use `xml.etree.ElementTree` or `lxml` to parse the XML and extract equivalent fields. The change would be minimal: replace `pd.read_csv()` with a `parse_xml_to_df(xml_path)` function that returns a DataFrame with the same structure.
 
-**API.** Aprovechando las funciones de Python para cargar sobre un DataFrame:
+**API.** Leveraging Python functions to load onto a DataFrame:
 
 ```python
 def load_from_api(query: str = "cond=cancer", max_results=1000) -> pd.DataFrame:
@@ -233,7 +230,7 @@ def load_from_api(query: str = "cond=cancer", max_results=1000) -> pd.DataFrame:
     return df
 ```
 
-**Otras bases de datos.** Usando SQLAlchemy para leer directamente sobre un DataFrame:
+**Other databases.** Using SQLAlchemy to read directly onto a DataFrame:
 
 ```python
 def load_from_db(db_url: str, query: str = "SELECT * FROM clinical_trials") -> pd.DataFrame:
@@ -243,49 +240,50 @@ def load_from_db(db_url: str, query: str = "SELECT * FROM clinical_trials") -> p
 
 ---
 
-## Otras Tareas Pendientes
+## Other Pending Tasks
 
-- **CI/CD:** Crear `.github/workflows/ci.yml` con GitHub Actions para ejecutar en cada push: instalación de dependencias, validación de calidad y construcción de imagen Docker.
-- **Gestión de secretos:** Añadir `.env.example`, incluir `.env` en `.gitignore` y actualizar el código para usar `python-dotenv` + `os.getenv()`.
-- **CI seguro:** Tomar `DB_URL` desde Secrets de GitHub, no desde archivos.
-- **Orquestación:** Añadir un flujo mínimo (ETL > validaciones > analytics).
-- **Producción:** Plan de migración a Secrets Manager (Vault / AWS / Azure), rotación de credenciales y roles con principio de menor privilegio.
+- **CI/CD:** Create `.github/workflows/ci.yml` with GitHub Actions to run on each push: dependency installation, quality validation and Docker image building.
+- **Secret management:** Add `.env.example`, include `.env` in `.gitignore` and update the code to use `python-dotenv` + `os.getenv()`.
+- **Safe CI:** Take `DB_URL` from GitHub Secrets, not from files.
+- **Orchestration:** Add a minimal flow (ETL > validations > analytics).
+- **Production:** Plan migration to Secrets Manager (Vault / AWS / Azure), credential rotation and roles with principle of least privilege.
 
 ---
 
-## Preguntas Bonus
+## Bonus Questions
 
-**Escalabilidad: ¿Cómo manejarías 100 veces más volumen de datos?**
+**Scalability: How would you handle 100 times more data volume?**
 
-Usar almacenamiento en nube con formatos comprimidos como Parquet.
-Particionamiento de tablas por fecha cuando el volumen lo requiera. 
-Valorar el uso de vistas materializadas para acelerar consultas frecuentes.
+Use cloud storage with compressed formats like Parquet.
+Partitioning of tables by date when volume requires it.
+Consider the use of materialized views to accelerate frequent queries.
 
-**Calidad de datos: ¿Qué validaciones adicionales implementarías?**
+**Data Quality: What additional validations would you implement?**
 
-Añadir campo de completion_date para tener el rango real de fechas del estudio
-Añadir si es posible en NCT id como clave del estudio
-Añadir si es posible la version del estudio para adaptar una nueva tabla 1 estudio: N versiones (con diferente StartDate)
-Generar un diccionario/tabla de vocablos. No todo texto es válido
-Revisar la congruencia de todos los tipos de datos
-Revisar valores errores o nulos hay y no deberiamos permitir
+Add completion_date field to have the actual date range of the study.
+Add NCT id as study key if possible.
+Add study version if possible to adapt a new table: 1 study: N versions (with different StartDate).
+Generate a dictionary/table of terms. Not all text is valid.
+Review the congruence of all data types.
+Review what error values or NULLs there are and we shouldn't allow.
 
-**Cumplimiento normativo: ¿Qué habría que tener en cuenta en un entorno GxP?**
+**Regulatory Compliance: What would need to be considered in a GxP environment?**
 
-Tres capas de entorno: DEV, TEST y PROD. 
-Auditoría de creaciones y modificaciones de registros (usuario y fecha). 
-Seguridad basada en tipología de usuarios y roles. 
-Estandarización en codificación y nomenclatura.
+Three environment layers: DEV, TEST and PROD.
+Auditing of record creation and modification (user and date).
+Security based on user typology and roles.
+Standardization in coding and nomenclature.
 
-**Monitoreo: ¿Cómo monitorizarías este pipeline en producción?**
+**Monitoring: How would you monitor this pipeline in production?**
 
-Métricas de throughput, latency, error rate, filas procesadas y calidad (nulos, duplicados). 
-Logging a varios niveles. 
-Alertas automáticas ante errores graves o incumplimiento de los compromisos de tiempo (RPO/RTO). Monitorización de índices y estadísticas de la base de datos, especialmente si hay queries pesadas frecuentes.
+Throughput, latency, error rate, processed rows and quality metrics (nulls, duplicates).
+Logging at multiple levels.
+Automatic alerts on critical errors or breach of time commitments (RPO/RTO).
+Monitoring of indexes and database statistics, especially if there are frequent heavy queries.
 
-**Seguridad: ¿Qué medidas aplicarías para datos clínicos sensibles?**
+**Security: What measures would you apply for sensitive clinical data?**
 
-Uso de gestores de secretos (ej. AWS Secrets Manager) para credenciales. 
-Seguridad basada en roles de usuario. 
-Base de datos con anonimización de datos y valorar el coste/beneficio de la encriptación. 
-Auditoría de accesos.
+Use of secrets managers (e.g. AWS Secrets Manager) for credentials.
+Security based on user roles.
+Database with data anonymization and assess cost/benefit of encryption.
+Access auditing.
